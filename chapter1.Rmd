@@ -1,4 +1,11 @@
 
 # About the project
 
-*Write a short description about the course and add a link to your GitHub repository here. This is an R Markdown (.Rmd) file so you can use R Markdown syntax.*
+I am very excited about this course. I think I will learn a lot of interesting and very useful things. I study statistics, so I want this course be a bit more practical that my other studies.
+
+Johanna Tuhkanen recommended me this course. Also, I got a letter from Kimmo Vehkalahti advertising this course. 
+
+#### A link to my GitHub repository:
+
+[Here!](https://github.com/your_github_username/IODS-project)
+
