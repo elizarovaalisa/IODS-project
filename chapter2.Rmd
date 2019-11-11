@@ -1,4 +1,4 @@
-# Exsercise 2
+# Exercise 2
 
 ### The data reading and exploring
 ```{r}
