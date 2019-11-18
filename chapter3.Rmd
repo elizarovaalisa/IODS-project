@@ -1,0 +1,102 @@
+# Exercise 2
+
+#### Data reading and exploring 
+```{r}
+alc <- read.table("http://s3.amazonaws.com/assets.datacamp.com/production/course_2218/datasets/alc.txt", sep = "," , header=TRUE)
+colnames(alc)
+```
+This data is about the students of 2 Portuguese schools. It contains basic information, like gender and age, about the students. Also, it tells about the alcohol consumption of the students. 
+
+#### About my study
+The purpose of my analysis is to study the relationships between high/low alcohol consumption and the following variables:
+1. the student's age
+2. the student's school
+3. the quality of student's family relationships
+4. the student's plans about taking higher education
+
+I think that age might have a significant effect on the consumption of alcohol. I hypothesize that as a student becomes older, he or she drink more alcohol. 
+Also, I am interested to know if there is any difference in alcohol consumption between these 2 schools. It might be that one of these schools is located in a not so good area, which makes alcohol consumption bigger.
+My hypothesis about the effect of a student's family relationship is that students who have a good relationship with their family are less prone to drink than the students whose relationships are not that good.
+My 4th explanatory variable is the student's plans about taking higher education. I think that if a student is planning to study further, he or she more focus on their studies and drink less than others.  
+
+#### The explanatory variables and their relationships with alcohol consumption
+
+Let us start with the variable "age".
+```{r}
+library(ggplot2)
+ggplot(data = alc, aes(x = age, fill = high_use)) + geom_bar()
+```
+What we see is that we have a pick at the age of 17.
+
+The second variable is school. 
+```{r}
+ggplot(data = alc, aes(x = school, fill = high_use)) + geom_bar()
+```
+It's quite hard to say if alcohol consumption is bigger in one of the schools. In our further analysis, it might turn out that this variable and our response variable are independent.
+
+The next graph is about alcohol consumption and family. 
+```{r}
+ggplot(data = alc, aes(x = famrel, fill = high_use)) + geom_bar()
+library(dplyr)
+t <- table(family = alc$famrel, high_use = alc$high_use)
+t
+for (i in 1:nrow(t)) {
+  sum <- t[i,1] + t[i,2]
+  t[i, 1] <- t[i,1]/sum
+  t[i, 2] <- t[i,2]/sum
+}
+t
+```
+Based on this last table, we can say that there is a negative correlation between this variable and the response variable. 
+
+Also, let us see if students who want to continue their studies are not heavy drinkers.
+```{r}
+ggplot(data = alc, aes(x = higher, fill = high_use)) + geom_bar()
+t <- table(family = alc$higher, high_use = alc$high_use)
+t
+for (i in 1:nrow(t)) {
+  sum <- t[i,1] + t[i,2]
+  t[i, 1] <- t[i,1]/sum
+  t[i, 2] <- t[i,2]/sum
+}
+t
+```
+It seems that my hypothesis is quite true.
+
+#### The logistic regression
+Not it is time to use logistic regression to statistically explore the relationship between the variables and the binary high/low alcohol consumption variable as the target variable.
+```{r}
+model <- glm(high_use ~ age + school + famrel + higher, data = alc, family = "binomial")
+summary(model)
+```
+Based on the result we got from fitting the model, the only variable "famrel" is statistically significant. 
+
+The odd ratios of the coefficients and their 95% confindence intervals are below:
+```{r}
+exp(cbind(coef(model), confint(model)))
+```
+Here we have one more evidence of the fact that only "famrel" is statistically significant. Its confidence interval does not contain 1 and so it does have an effect on alcohol consumption. Others' confidence interval contains 1, so there is no evidence that they really affect our response variable. 
+
+#### The predictive power of the model
+Now we are going to create a model that contains only "farmel" as an explanatory variable. 
+```{r}
+model <- glm(high_use ~ famrel, data = alc, family = "binomial")
+summary(model)
+```
+So, let us explore the predictive power of this model.
+```{r}
+probabilities <- predict(model, type = "response")
+alc <- mutate(alc, probability = probabilities)
+alc <- mutate(alc, prediction = probabilities > 0.5)
+loss_func <- function(class, prob) {
+  n_wrong <- abs(class - prob) > 0.5
+  mean(n_wrong)
+}
+loss_func(class = alc$high_use, prob = alc$probability)
+table(high_use = alc$high_use, prediction = alc$prediction) %>% prop.table() %>% addmargins()
+
+library(boot)
+cv <- cv.glm(data = alc, cost = loss_func, glmfit = model, K = 10)
+cv$delta[1]
+```
+The average number of wrong predictions is 0.29, which is bigger than the one in datacamp exercise.
