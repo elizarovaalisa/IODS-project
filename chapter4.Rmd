@@ -1,0 +1,169 @@
+# Exercise 4
+
+## Data downloading and exploring
+```{r}
+library(MASS)
+data(Boston)
+str(Boston)
+```
+This dataset contains information collected by the U.S Census Service concerning housing in the area of Boston Mass. The dataset is small in size with only 506 cases. There are 14 attributes in each case of the dataset. They are:
+
+* CRIM - per capita crime rate by town
+* ZN - proportion of residential land zoned for lots over 25,000 sq.ft.
+* INDUS - it serves as a proxy for the externalities with industry (noise, heavy traffic)
+* CHAS - Charles River dummy variable (1 if tract bounds river; 0 otherwise)
+* NOX - nitric oxides concentration (parts per 10 million)
+* RM - average number of rooms per dwelling
+* AGE - is related to structure quality
+* DIS - weighted distances to five Boston employment centres
+* RAD - index of accessibility to radial highways
+* TAX - full-value property-tax rate per $10,000
+* PTRATIO - pupil-teacher ratio by town
+* B - 1000(Bk - 0.63)^2 where Bk is the proportion of blacks by town
+* LSTAT - % lower status of the population
+* MEDV - Median value of owner-occupied homes in $1000's
+
+All varaibles are numerical. No every variable is continious. 
+
+## Overview of the data
+```{r message=FALSE}
+library(tidyverse)
+library(corrplot)
+corr_matrix <- cor(Boston)
+corrplot(corr_matrix, method = 'square', type = 'upper', cl.pos = 'b', tl.cex = 0.6)
+summary(Boston)
+```
+Because the pairs plot is very complex this time, I decided to explore a corrplot at first. To make this plot I calculated the correlation matrix first and then created this plot with the function "corrplot" from the package "corrplot".
+
+What I notice from this plot is 
+
+* Next pairs have strong negative correlations:
+  + lstat and medv
+  + age and dis
+  + age and nox
+  + age and indus
+* And these pairs have a strong positive correlation:
+  + rad and tax (very strong!)
+  + indus and tax 
+  + indus and nox
+
+For example, we can take a look at the relationship of rad and tax.
+```{r}
+ggplot(data = Boston, aes(x = rad, y = tax)) +
+  geom_point()
+```
+I think we just found the reason for such a strong correlation. The outlier in the right upper corner might be the reason for it. We can test what happens if we remove it. 
+```{r}
+library(dplyr)
+cor_test <- as.data.frame(cbind(Boston$rad, Boston$tax))
+cor_test <- filter(cor_test, V1 < 20)
+cor(cor_test)
+```
+Removing this outlier the correlation becomes about 0.2. So my hypothesis about why their correlation is so strong was right.
+
+## Standardising the dataset
+To go on we need to standardise or to scale our dataset. It can be made easily with the function "scale".
+```{r}
+b_scaled <- scale(Boston)
+summary(b_scaled)
+b_scaled <- as.data.frame(b_scaled)
+```
+Scaled variables have 0 as their means. Scaling does not affect the variances. Also, I changed out dataset from a matrix to a data frame. I think it will be useful later.
+
+## New variable CRIME
+Now we create a categorical variable of the crime rate. We are going to use the quantiles as the break points in this variable. 
+```{r}
+library(dplyr)
+breaks <- quantile(b_scaled$crim)
+crime <- cut(b_scaled$crim, breaks = breaks, include.lowest = TRUE, labels = c('low', 'med_low', 'med_high', 'high'))
+b_scaled <- b_scaled[,2:14]
+b_scaled <- data.frame(b_scaled, crime)
+
+```
+With the last 4 lines of code I deleted the column "crim", add our new column "crime" and removed "crime" column from the test set. 
+
+## Dividing the dataset to train and test sets
+For our future analysis we need to divide our data to train and test sets. We are going to do it now. We are going to put 80 per cents of the data into the train set.
+```{r}
+ind <- sample(nrow(b_scaled), size = nrow(b_scaled)*0.8)
+train <- b_scaled[ind,]
+test <- b_scaled[-ind,]
+correct_classes <- test$crime
+test <- test[,1:13]
+
+```
+
+## Fitting the LDA
+We are going to fit the linear discriminant analysis on the train set. We are using the categorical crime rate as the target variable and all the other variables in the dataset as predictor variables.
+```{r}
+b_lda <- lda(crime ~ ., data = train)
+```
+The LDA plot are below.
+```{r}
+b_arrows <- function(x, myscale = 1, arrow.heads = 0.1, color = 'pink', tex = 0.75, choices = c(1,2)) {
+  heads = coef(x)
+  arrows(x0 = 0, y0 = 0, 
+         x1 = myscale*heads[,choices[1]],
+         y1 = myscale*heads[,choices[2]],
+         col = color, length = arrow.heads)
+  text(myscale*heads[,choices], labels = row.names(heads), cex = tex, col = color, pos = 3)
+}
+classes = as.numeric(train$crime)
+plot(b_lda, dimen = 2, col = classes)
+b_arrows(b_lda, myscale = 2)
+```
+
+## Predicting the classes
+Then we are going to predict the classes with the LDA model on the test data. 
+```{r}
+b_predict <- predict(b_lda, newdata = test)
+t <- table(correct = correct_classes, predicted = b_predict$class)
+t
+```
+I think the model predicted the best class "high". Maybe it is because this class defers a lot from other classes. To in which class we have the most errors we can create the same table but with the percentages.
+```{r}
+library(tidyverse)
+c1 <- t[,1]/colSums(t)[1]
+c2 <- t[,2]/colSums(t)[2]
+c3 <- t[,3]/colSums(t)[3]
+c4 <- t[,4]/colSums(t)[4]
+t2 <- cbind(c1, c2, c3, c4)
+colnames(t2) <- c('low', 'med_low', 'med_high', 'high')
+t2
+```
+The prediction of the class "med_low" caused the biggest number of wrong predictions. And predictions of the class "high" were the most correct.
+
+## K-means clustering
+Now we are going to do k-means clustering on the data "Boston". First of all, we have to decide how many clusters should we have. We can do by looking at how total WCSS changes when the number of clusters grows.
+```{r}
+data(Boston)
+b_scaled <- scale(Boston)
+dist <- dist(b_scaled)
+
+set.seed(123)
+k_max <- 12
+twscc <- sapply(1:k_max, function(k){
+  kmeans(b_scaled, k)$tot.withinss
+})
+qplot(x = 1:12, y = twscc, geom = 'line')
+
+```
+I think 2 is the optimal number of clusters. 
+
+Let's do the k-means clustering with 2 clusters and interpret the results.
+```{r warning=FALSE, message=FALSE, echo=FALSE}
+library(GGally)
+k_means <- kmeans(b_scaled, centers = 2)
+b_scaled <- as.data.frame(cbind(b_scaled, k_means$cluster))
+ggpairs(b_scaled, aes(col = as.factor(V15), alpha = 0.3), lower = list(combo = wrap("facethist", bins = 20)))
+```
+To be honest it isn't easy to interpret the results. Anyway, my thoughts:
+
+* indus is higher in class 2 (pink) -> housings are located in more industrial areas ()
+* nox is higher in class 2 -> air pollution
+* age is higher in class 2 -> quality of housings is better in  class 2
+* dis is higher in class 2 -> housings are located away from to employement centers
+* tax is higher in class 2 -> the public services are more expensive in class 2
+* medv is lower in class 2 -> median value of homes are lower in this class
+
+Based on these thoughts, class 2 includes not very attractive houses (bad air, located next to factories). The houses of  class 1 are located better, the air is better and that's why their price is usually higher.
