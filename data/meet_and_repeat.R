@@ -38,6 +38,9 @@ RATSL <-  RATS %>% gather(key = times, value = weight, -ID, -Group)
 BPRSL <-  BPRSL %>% mutate(week = as.integer(substr(BPRSL$weeks,5,5)))
 RATSL <-  RATSL %>% mutate(time = as.integer(substr(RATSL$times,3,4)))
 
+write.csv(BPRSL, "data/bprs.csv", row.names = FALSE)
+write.csv(RATSL, "data/rats.csv", row.names = FALSE)
+
 # 4
 # Explore
 head(BPRSL)

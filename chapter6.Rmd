@@ -1,0 +1,136 @@
+# Exercise 6
+
+## 1. Analysis of RATS data
+
+In this part, we are going to analyze the longitudinal data with the help of different graphs. We will not use any linear mixed-effects models.
+
+For of all, let us download the data and explore it. 
+
+```{r }
+RATS <- read.csv("data/rats.csv")
+RATS_o <- read.table("https://raw.githubusercontent.com/KimmoVehkalahti/MABS/master/Examples/data/rats.txt", header = TRUE, sep = '\t')
+
+RATS$ID <- factor(RATS$ID)
+RATS$Group <- factor(RATS$Group)
+```
+
+Our data from is a nutrition study conducted in three groups of rats. The groups were put on different diets, and each animal???s body weight (grams) was recorded repeatedly (approximately) weekly, except in week seven when two recordings were taken) over a 9-week period. The question of most interest is whether the growth profiles of the three groups differ.
+
+### Individuals on the plot
+
+To begin we will plot the WEIGHT values for all rats, differentiating between the diet groups into which the rats have been randomized.
+
+```{r }
+library(ggplot2)
+ggplot(RATS, aes(x=time, y=weight, linetype = ID)) +
+  geom_line() +
+  scale_linetype_manual(values = rep(1:10, times = 2)) +
+  facet_grid(. ~ Group, labeller = label_both) +
+  theme(legend.position = 'none') +
+  scale_y_continuous(limits = c(min(RATS$weight), max(RATS$weight)))
+```
+
+We notice that the initial weights of the rats in the 1st group are a lot smaller than those of the rats in other groups. And we might suggest that the diet of the 2nd and 3rd groups are better for the weight gain.
+
+Also, one rat in the second group seems to be an outlier. We will check later if it should be removed.
+
+### Summary plot
+
+Next, we will take a look at the plot which contains means and standard error of means. 
+
+```{r}
+library(tidyr)
+library(dplyr)
+n <- RATS$times %>% unique() %>% length()
+RATS_means <- RATS %>%
+  group_by(Group, time) %>%
+  summarise( mean = mean(weight), se = sd(weight)/sqrt(n) ) %>%
+  ungroup()
+
+ggplot(RATS_means, aes(x = time, y = mean, linetype = as.factor(Group), shape = as.factor(Group))) +
+  geom_line() +
+  geom_point(size=2) +
+  geom_errorbar(aes(ymin = mean - se, ymax = mean + se, linetype="1"), width=0.3) +
+  theme(legend.position = c(0.8,0.5)) +
+  scale_y_continuous(name = "mean(weight) +/- se(weight)")
+```
+Looking at this graph, I have the same feeling as previously. The rats on the 2nd and 3rd diets gained more weight than the rats that had the 1st diet. But we have to notice that the standard errors of the means are a lot smaller in the 1st group.   
+
+### Outlier. 
+
+We noticed one outlier. Let us check if it should be removed. 
+
+```{r}
+RATS_out <- RATS %>%
+  filter(time > 1) %>%
+  group_by(Group, ID) %>%
+  summarise( mean=mean(weight) ) %>%
+  ungroup()
+
+ggplot(RATS_out, aes(x = Group, y = mean)) +
+  geom_boxplot() +
+  stat_summary(fun.y = "mean", geom = "point", shape=23, size=4, fill = "white") +
+  scale_y_continuous(name = "mean(weight), weeks 1-8")
+```
+We notice 1 outlier that differs significantly from others. I think that we can remove it.  
+
+```{r}
+RATS_t <- RATS_out %>%
+  filter(mean < 560) 
+```
+
+### Anova
+Now it is time to make an anova test.
+```{r}
+RATS_anova <- RATS_out %>%
+  mutate(baseline = RATS_o$WD1) 
+fit <- lm(mean ~ baseline + Group, data = RATS_anova)
+anova(fit)
+```
+We notice that the baseline WEIGHT is strongly related to the WEIGHT values taken after the diets have started. These is no evidence of a diet difference after conditioning on the baseline value. That means that we can not say that there is a difference between these diets. 
+
+## 1. Analysis of BPRS data
+
+In this part, we are going to use different linear mixed-effects models to analyze the BPRS data.
+
+### The data
+We are going to download and explore our data now. 
+```{r}
+DATA <- read.csv("data/bprs.csv")
+```
+The DATA contains measurements of 40 male subjects that were randomly assigned to one of two treatment groups and each subject was rated on the brief psychiatric rating scale (BPRS) measured before treatment began (week 0) and then at weekly intervals for eight weeks. The scale is used to evaluate patients suspected of having schizophrenia.
+
+We want to know if there is any difference between these treatments.
+
+```{r}
+str(DATA)
+DATA$treatment <- factor(DATA$treatment)
+DATA$subject <- factor(DATA$subject)
+```
+
+```{r}
+ggplot(DATA, aes(x = week, y = bprs, linetype = subject)) +
+  geom_line() +
+  scale_linetype_manual(values = rep(1:10, times=4)) +
+  facet_grid(. ~ treatment, labeller = label_both) +
+  theme(legend.position = "none") + 
+  scale_y_continuous(limits = c(min(DATA$bprs), max(DATA$bprs)))
+```
+
+### Models
+We are going to create a few models now. We will choose the best one.
+```{r}
+library(lme4)
+
+model_1 <- lmer(bprs ~ week + treatment + (1|subject), data = DATA, REML = FALSE)
+model_2 <- lmer(bprs ~ week + treatment + (week | subject), data = DATA, REML = FALSE)
+model_3 <- lmer(bprs ~ week + treatment + (week | subject) + week*treatment, data = DATA, REML = FALSE)
+
+anova(model_1, model_2, model_3)
+```
+p-value is the smallest with the model "model_2". So we are going to use it. 
+```{r}
+summary(model_2)
+```
+
+t value of the "treatment2" is 0.550, which means that there is no difference between the 1st and 2nd treatment. 
